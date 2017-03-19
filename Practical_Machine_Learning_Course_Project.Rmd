@@ -1,0 +1,127 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Nirmalya Bhattacharya"
+date: "3/19/2017"
+output: html_document
+---
+
+```{r global_options, include=FALSE}
+rm(list=ls()) ### To clear namespace
+library(knitr)
+opts_chunk$set(fig.width=8, fig.height=5, fig.path='figure/',
+               echo=TRUE, warning=FALSE, message=FALSE,CACHE=TRUE)
+```
+##Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+#### The following packages would be required:
+ - caret
+ - randomForest
+ - rpart
+ - rpart.plot
+ - e1071
+ 
+ Hence, it would be a good idea to download and install these packages using the ```install.packages()``` command, before starting this exercise.
+
+```{r load_data_libraries,results='hide', message=FALSE, warning=FALSE}
+
+suppressWarnings(library(caret))
+suppressWarnings(library(randomForest))
+suppressWarnings(library(rpart))
+suppressWarnings(library(rpart.plot))
+suppressWarnings(library(ggplot2))
+
+# Before we start we must set the seed, so that we can have reproducuble results
+set.seed(1)
+
+```
+## About the data
+
+The data comprises of the [training set](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv) and the [testing set](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv). The source of the data is http://groupware.les.inf.puc-rio.br/har .
+
+## Submission of completed project
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+## Analysis (Building the model)
+
+For this data set, the "participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in 5 different fashions". The variable "classe" is a factor variable that has values from A through E. These values stand for:
+
+- exactly according to the specification (Class <b>A</b>)
+- throwing the elbows to the front (Class <b>B</b>)
+- lifting the dumbbell only halfway (Class <b>C</b>)
+- lowering the dumbbell only halfway (Class <b>D</b>)
+- throwing the hips to the front (Class <b>E</b>)
+
+Out of these only Class A denotes the correct form of doing the exercise, the others stand for common mistakes.
+The data set contains some "NA" values and there are some columns (1 through 7) that are not useful while prediction. Hence, the data set that will be used needs to be cleaned of NAs and the columns that will not be useful while predicting.
+
+The models that will be used are Decision Tree and Random Forest, and the aim is to maximise the accuracy.
+
+
+```{r subpartitioning_training_set}
+
+trainingset <- read.csv("pml-training.csv", na.strings=c("NA","#DIV/0!", ""))
+
+testingset <- read.csv("pml-testing.csv", na.strings=c("NA","#DIV/0!", ""))
+
+
+trainingset <- trainingset[,colSums(is.na(trainingset)) == 0]
+testingset <- testingset[,colSums(is.na(testingset)) == 0]
+trainingset <- trainingset[,-c(1:7)]
+testingset <- testingset[,-c(1:7)]
+```
+
+## Cross Validation
+
+Hence, the training set will be further subdivided into a training set (random sampling of 75%, without replacement) and a testing set of the remaining 25%. The intent is to train the model on this training subset, and validate with the testing subset. Finally, the more accurate of the two approches is to be chosen and tested on the original testing set.
+
+```{r partition_7525}
+
+subpartition_7525 <- createDataPartition(y=trainingset$classe, p=0.75, list=FALSE)
+subpartition_training <- trainingset[subpartition_7525, ]
+subpartition_testing <- trainingset[-subpartition_7525, ]
+
+ggplot(data=subpartition_training, aes(x=classe,fill=..count..))+geom_bar(stat="count")+theme_bw()+guides(fill=FALSE)+scale_fill_gradient(low = "#9AEAFA", high = "#0B5AB4")+ggtitle("Levels of each classe for the \"subpartition_training\" within the Training Data set") +
+  labs(x="Classe", y="Count")
+
+```
+## Expected out of sample error
+
+The accuracy of the models is the ratio of correct classifications to the total observations in the testing subset of the training set. The number of misclassifications is the out of sample error.
+
+
+### Prediction Model: Decision Trees
+
+```{r prediction_model_decisiontree}
+model_decisiontree <- rpart(classe ~ ., data=subpartition_training, method="class")
+prediction_decisiontree <- predict(model_decisiontree, subpartition_testing, type = "class")
+rpart.plot(model_decisiontree, main="Decision Tree Plot", extra=102, under=TRUE, faclen=0)
+confusionMatrix(prediction_decisiontree, subpartition_testing$classe)
+```
+
+### Prediction Model: Random Forest
+```{r prediction_model_randomforest}
+model_randomforest <- randomForest(classe ~. , data=subpartition_training, method="class")
+
+prediction_randomforest <- predict(model_randomforest, subpartition_testing, type = "class")
+
+confusionMatrix(prediction_randomforest, subpartition_testing$classe)
+```
+
+### Decision and reason for choices made
+The variable "classe" is a factor variable. Hence it is easy to classify this data. Also Decision trees and Random Forest algorithms are used for their ability of detecting the features that are important for classification.
+Also, from the above confusion matrices we can get a comparative score of accuracy for the used methods. As we can see, the accuracy obtained from model that used Decision Trees is <b>0.758</b> and the accuracy obtained from the Random Forest is <b>0.9965</b>.
+Hence, in this case we can conclude that Random Forest has a higher accuracy of classification and hence a better model. Let us use this model to predict the test data, which contains 20 observations.
+
+##Prediction
+
+```{r prediction}
+predict_testingset <- predict(model_randomforest, testingset, type="class")
+```
+#### Based on the above, the prediction on the testing set is as below:
+```{r prediction_results,echo=FALSE}
+predict_testingset
+```
+
+
